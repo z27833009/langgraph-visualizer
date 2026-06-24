@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LangGraph Local Visualizer</title>
+    <!-- Load Google Font: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #090d16;
+            --panel-bg: #0f172a;
+            --border-color: #1e293b;
+            --text-primary: #f8fafc;
+            --text-secondary: #64748b;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-purple: #8b5cf6;
+            --active-glow: rgba(59, 130, 246, 0.4);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        header {
+            background-color: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: -0.2px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        header h1::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--accent-green);
+            box-shadow: 0 0 12px var(--accent-green);
+        }
+
+        .status-badge {
+            background-color: #1e293b;
+            padding: 6px 12px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+        }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Graph Panel */
+        .graph-panel {
+            flex: 2;
+            position: relative;
+            background-color: #05070f;
+            overflow: hidden;
+        }
+
+        #graph-svg {
+            width: 100%;
+            height: 100%;
+            /* Subtle Grid Background Pattern */
+            background-image: radial-gradient(rgba(51, 65, 85, 0.25) 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+
+        /* Sidebar Inspector */
+        .inspector-panel {
+            width: 400px;
+            border-left: 1px solid var(--border-color);
+            background-color: var(--panel-bg);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: -4px 0 10px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .panel-tab {
+            padding: 14px 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            background-color: rgba(15, 23, 42, 0.6);
+        }
+
+        .state-container {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            font-family: 'SFMono-Regular', Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 0.85rem;
+        }
+
+        .state-block {
+            background-color: #020617;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 16px;
+            white-space: pre-wrap;
+            color: #38bdf8;
+            overflow-x: auto;
+            line-height: 1.5;
+        }
+
+        .log-container {
+            height: 280px;
+            border-top: 1px solid var(--border-color);
+            padding: 20px;
+            overflow-y: auto;
+            background-color: #090d16;
+        }
+
+        .log-entry {
+            font-size: 0.8rem;
+            margin-bottom: 10px;
+            color: var(--text-secondary);
+            border-left: 2px solid var(--border-color);
+            padding-left: 10px;
+            line-height: 1.4;
+        }
+
+        .log-entry.start {
+            border-left-color: var(--accent-blue);
+            color: var(--text-primary);
+        }
+
+        .log-entry.end {
+            border-left-color: var(--accent-green);
+        }
+
+        .log-entry.init {
+            border-left-color: var(--accent-purple);
+        }
+
+        /* SVG Node Styles */
+        .node {
+            cursor: pointer;
+        }
+
+        .node rect {
+            fill: #1e293b;
+            stroke: #334155;
+            stroke-width: 1.5px;
+            rx: 10px;
+            ry: 10px;
+            transition: all 0.2s ease;
+        }
+
+        .node:hover rect {
+            fill: #334155;
+            stroke: var(--accent-blue);
+        }
+
+        .node.active rect {
+            fill: #0f172a;
+            stroke: var(--accent-blue);
+            stroke-width: 2px;
+            filter: drop-shadow(0 0 12px rgba(59, 130, 246, 0.45));
+        }
+
+        .node.completed rect {
+            stroke: var(--accent-green);
+            fill: #142820;
+        }
+
+        .node text.node-label {
+            fill: var(--text-primary);
+            font-size: 13px;
+            font-weight: 600;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+
+        .node text.node-type {
+            fill: #64748b;
+            font-size: 9px;
+            font-weight: 700;
+            text-anchor: middle;
+            pointer-events: none;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .node.active text.node-type {
+            fill: var(--accent-blue);
+        }
+
+        .node.completed text.node-type {
+            fill: var(--accent-green);
+        }
+
+        /* Edge Styles & Animations */
+        @keyframes flow {
+            to {
+                stroke-dashoffset: -20;
+            }
+        }
+
+        .edge {
+            stroke: #1e293b;
+            stroke-width: 1.5px;
+            fill: none;
+            transition: stroke 0.3s ease, stroke-width 0.3s ease;
+        }
+
+        .edge.active {
+            stroke: var(--accent-blue);
+            stroke-width: 2px;
+            stroke-dasharray: 6 4;
+            animation: flow 1.2s linear infinite;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>LangGraph Local Visualizer</h1>
+        <span class="status-badge" id="ws-status">Connecting...</span>
+    </header>
+
+    <div class="main-container">
+        <!-- Live Graph View -->
+        <div class="graph-panel">
+            <svg id="graph-svg">
+                <g id="links-group"></g>
+                <g id="nodes-group"></g>
+            </svg>
+
+        </div>
+
+        <!-- Inspector Sidebar -->
+        <div class="inspector-panel">
+            <div class="panel-tab">State Inspector</div>
+            <div class="state-container">
+                <div class="state-block" id="state-viewer">Waiting for execution...</div>
+            </div>
+            
+            <div class="panel-tab" style="border-top: 1px solid var(--border-color)">Execution Log</div>
+            <div class="log-container" id="log-viewer">
+                <div class="log-entry init">Visualizer started. Listening for LangGraph events...</div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="main.js"></script>
+</body>
+</html>
