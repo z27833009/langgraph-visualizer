@@ -48,7 +48,7 @@ uv run example_agent.py    # 跑示例 agent,事件会流到可视化界面
 ## 当前进度
 
 - [x] Phase 0:真正接上 LangGraph(结构自动提取 + callback 采集 + 一行 `watch()` + 真示例)
-- [ ] Phase 1:错误可视化 + 后端自动 state diff(根因定位)
+- [x] Phase 1:错误可视化 + 后端自动 state diff(根因定位)
 - [ ] Phase 2:耗时/token/成本叠加 + SQLite 持久化 + 时间轴回放
 
 > 完成一项就把对应 `[ ]` 勾上,并在 `docs/IMPLEMENTATION_PLAN.md` 里记录偏差。

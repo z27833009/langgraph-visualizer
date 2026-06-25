@@ -168,6 +168,83 @@
             border-left-color: var(--accent-purple);
         }
 
+        .log-entry.error {
+            border-left-color: #ef4444;
+            color: #fca5a5;
+        }
+
+        .log-entry.anomaly {
+            border-left-color: #f59e0b;
+            color: #fcd34d;
+            font-weight: 600;
+        }
+
+        /* Color-coded state deltas */
+        .delta-list {
+            margin-top: 6px;
+            font-size: 0.8rem;
+            line-height: 1.6;
+        }
+
+        .delta-row {
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-bottom: 3px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .delta-added {
+            background-color: rgba(16, 185, 129, 0.12);
+            border-left: 3px solid var(--accent-green);
+            color: #6ee7b7;
+        }
+
+        .delta-changed {
+            background-color: rgba(245, 158, 11, 0.12);
+            border-left: 3px solid #f59e0b;
+            color: #fcd34d;
+        }
+
+        .delta-removed {
+            background-color: rgba(239, 68, 68, 0.12);
+            border-left: 3px solid #ef4444;
+            color: #fca5a5;
+        }
+
+        /* Error / traceback panel */
+        .error-panel {
+            border-top: 1px solid #7f1d1d;
+            background-color: #1a0d0d;
+            display: none;
+        }
+
+        .error-panel.visible {
+            display: block;
+        }
+
+        .error-panel .panel-tab {
+            color: #fca5a5;
+            background-color: rgba(127, 29, 29, 0.25);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .error-traceback {
+            max-height: 220px;
+            overflow: auto;
+            padding: 14px 20px;
+            font-family: 'SFMono-Regular', Consolas, monospace;
+            font-size: 0.75rem;
+            color: #fca5a5;
+            white-space: pre;
+        }
+
+        .error-traceback.collapsed {
+            display: none;
+        }
+
         /* SVG Node Styles */
         .node {
             cursor: pointer;
@@ -197,6 +274,17 @@
         .node.completed rect {
             stroke: var(--accent-green);
             fill: #142820;
+        }
+
+        .node.error rect {
+            stroke: #ef4444;
+            fill: #2a1212;
+            stroke-width: 2.5px;
+            filter: drop-shadow(0 0 12px rgba(239, 68, 68, 0.5));
+        }
+
+        .node.error text.node-type {
+            fill: #ef4444;
         }
 
         .node text.node-label {
@@ -270,6 +358,14 @@
                 <div class="state-block" id="state-viewer">Waiting for execution...</div>
             </div>
             
+            <div class="error-panel" id="error-panel">
+                <div class="panel-tab" id="error-tab">
+                    <span>⚠ Error / Traceback</span>
+                    <span id="error-toggle">▾</span>
+                </div>
+                <div class="error-traceback" id="error-traceback"></div>
+            </div>
+
             <div class="panel-tab" style="border-top: 1px solid var(--border-color)">Execution Log</div>
             <div class="log-container" id="log-viewer">
                 <div class="log-entry init">Visualizer started. Listening for LangGraph events...</div>

@@ -1,10 +1,14 @@
-import json
 import logging
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+try:  # works both as `python backend/main.py` and as a package import
+    from backend.diff import diff_state
+except ImportError:
+    from diff import diff_state
 
 
 logging.basicConfig(level=logging.INFO)
@@ -58,6 +62,20 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# Per-run baseline of the previous full_state, used to auto-compute state_delta.
+# Backend is the single source of truth for diffs (clients never send them).
+_prev_state: dict[str, dict] = {}
+
+
+def compute_delta(event: GraphEvent) -> None:
+    """Fill event.state_delta by diffing against the run's previous state."""
+    if event.event_type == "graph_init":
+        _prev_state[event.run_id] = event.full_state or {}
+    elif event.event_type == "node_end":
+        prev = _prev_state.get(event.run_id, {})
+        event.state_delta = diff_state(prev, event.full_state or {})
+        _prev_state[event.run_id] = event.full_state or {}
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
@@ -72,6 +90,8 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.post("/event")
 async def post_event(event: GraphEvent):
     logger.info(f"Received event: {event.event_type} for node '{event.node_name}'")
+    # Backend computes the state delta (single source of truth).
+    compute_delta(event)
     # Broadcast to all connected frontends
     await manager.broadcast(event.model_dump_json())
     return {"status": "ok"}

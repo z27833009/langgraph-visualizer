@@ -123,11 +123,16 @@ graph.invoke(inputs)               # 正常调用，事件自动流到后端
 - MVP 可以做简单规则；不要过度设计成"智能根因分析"。
 
 ### Phase 1 验收（每条都要可复现 + 有客观判据）
-- [ ] **错误可视化**:在 `example_agent.py` 提供一个可切换的"故意报错"模式(如 `RAISE_AT=web_tool` 环境变量),触发后前端该节点变红、可展开看到完整 traceback,日志有一条红色错误。
-- [ ] **diff 自动**:`node_end` 事件的 `state_delta` 由**后端**填充;把 client 端任何手填 delta 的代码删掉后,前端的字段高亮仍正确(新增=绿、改动=黄、删除=红)。
-- [ ] **diff 正确性**:diff 计算有单测覆盖,至少包含 新增 key、修改 key、删除 key、嵌套 dict 变化 四种 case,`uv run pytest` 全绿。
-- [ ] **首次异常标记**:报错 run 里,前端能标出"⚠ 首次异常"并指向引入问题的节点。
-- [ ] **不破坏 Phase 0**:重跑 Phase 0 的全部验收项仍通过(实时高亮、降级安全、协议字段齐全)。
+- [x] **错误可视化**:在 `example_agent.py` 提供一个可切换的"故意报错"模式(如 `RAISE_AT=web_tool` 环境变量),触发后前端该节点变红、可展开看到完整 traceback,日志有一条红色错误。
+- [x] **diff 自动**:`node_end` 事件的 `state_delta` 由**后端**填充;把 client 端任何手填 delta 的代码删掉后,前端的字段高亮仍正确(新增=绿、改动=黄、删除=红)。
+- [x] **diff 正确性**:diff 计算有单测覆盖,至少包含 新增 key、修改 key、删除 key、嵌套 dict 变化 四种 case,`uv run pytest` 全绿。
+- [x] **首次异常标记**:报错 run 里,前端能标出"⚠ 首次异常"并指向引入问题的节点。
+- [x] **不破坏 Phase 0**:重跑 Phase 0 的全部验收项仍通过(实时高亮、降级安全、协议字段齐全)。
+
+> **Phase 1 实现备注**
+> - diff 放后端:`backend/diff.py` 的 `diff_state(old,new)` 递归算 added/changed/removed(嵌套 dict 用点号路径,如 `user.name`);`backend/main.py` 按 `run_id` 维护上一步 `full_state` 基线。
+> - 为让首个节点的 diff 有意义,`watch()` 把**初始 state** 放进 `graph_init` 事件的 `full_state` 作为基线(否则首步会全部算"新增")。
+> - 报错时在 `WatchedGraph.stream` 用 `try/finally` 强制 flush,保证 `node_error`(callback 在异常抛出前发出)能在进程退出前送达后端。
 
 ---
 

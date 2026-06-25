@@ -4,6 +4,21 @@ const stateViewer = document.getElementById("state-viewer");
 const logViewer = document.getElementById("log-viewer");
 const nodesGroup = document.getElementById("nodes-group");
 const linksGroup = document.getElementById("links-group");
+const errorPanel = document.getElementById("error-panel");
+const errorTraceback = document.getElementById("error-traceback");
+const errorTab = document.getElementById("error-tab");
+const errorToggle = document.getElementById("error-toggle");
+
+if (errorTab) {
+    errorTab.addEventListener("click", () => {
+        errorTraceback.classList.toggle("collapsed");
+        errorToggle.innerText = errorTraceback.classList.contains("collapsed") ? "▸" : "▾";
+    });
+}
+
+// Per-run history of each state key's value, for first-anomaly detection.
+let keyHistory = {};
+let flaggedAnomalies = new Set();
 
 const socket = new WebSocket(`ws://${window.location.host}/ws`);
 
@@ -37,6 +52,9 @@ socket.onmessage = (event) => {
         // Backward-compat: old events carried nodes/links under state_delta.
         const structure = data.structure || data.state_delta || {};
         initGraph(structure.nodes || [], structure.links || []);
+        keyHistory = {};
+        flaggedAnomalies = new Set();
+        hideError();
         addLogEntry("init", "Graph initialized with structure.");
     } else if (data.event_type === "node_start") {
         setActiveNode(data.node_name);
@@ -44,12 +62,70 @@ socket.onmessage = (event) => {
     } else if (data.event_type === "node_end") {
         setCompletedNode(data.node_name);
         updateState(data.full_state, data.state_delta);
+        detectAnomalies(data.node_name, data.full_state, data.state_delta);
         const dur = data.duration_ms != null ? ` (${data.duration_ms.toFixed(0)}ms)` : "";
         addLogEntry("end", `✓ ${data.node_name}${dur}`);
     } else if (data.event_type === "node_error") {
-        addLogEntry("end", `✗ ${data.node_name}: ${data.error?.message || "error"}`);
+        setErrorNode(data.node_name);
+        showError(data.node_name, data.error || {});
+        flagAnomaly(data.node_name, `node '${data.node_name}' raised ${data.error?.type || "error"}`);
+        addLogEntry("error", `✗ ${data.node_name}: ${data.error?.message || "error"}`);
     }
 };
+
+function showError(nodeName, error) {
+    errorTraceback.innerText =
+        (error.type ? `${error.type}: ${error.message}\n\n` : "") +
+        (error.traceback || "(no traceback)");
+    errorTraceback.classList.remove("collapsed");
+    errorToggle.innerText = "▾";
+    errorPanel.classList.add("visible");
+}
+
+function hideError() {
+    errorPanel.classList.remove("visible");
+    errorTraceback.innerText = "";
+}
+
+// First-anomaly heuristic (lightweight, deterministic — no "AI diagnosis").
+function detectAnomalies(nodeName, fullState, delta) {
+    const changes = { ...(delta?.added || {}), ...(delta?.changed || {}) };
+    Object.keys(changes).forEach(path => {
+        const entry = delta.changed && delta.changed[path];
+        const newVal = entry ? entry.new : changes[path];
+        const oldVal = entry ? entry.old : undefined;
+
+        const isEmpty = newVal === null || newVal === "" ||
+            (Array.isArray(newVal) && newVal.length === 0) ||
+            (newVal && typeof newVal === "object" && !Array.isArray(newVal) && Object.keys(newVal).length === 0);
+        const typeChanged = oldVal !== undefined && newVal !== undefined &&
+            jsType(oldVal) !== jsType(newVal);
+
+        if (typeChanged) {
+            flagAnomaly(nodeName, `'${path}' changed type ${jsType(oldVal)} → ${jsType(newVal)}`);
+        } else if (isEmpty && oldVal !== undefined && !isEmptyVal(oldVal)) {
+            flagAnomaly(nodeName, `'${path}' became empty/None`);
+        }
+    });
+}
+
+function isEmptyVal(v) {
+    return v === null || v === "" ||
+        (Array.isArray(v) && v.length === 0) ||
+        (v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0);
+}
+
+function jsType(v) {
+    if (v === null) return "null";
+    if (Array.isArray(v)) return "array";
+    return typeof v;
+}
+
+function flagAnomaly(nodeName, reason) {
+    if (flaggedAnomalies.has(reason)) return;
+    flaggedAnomalies.add(reason);
+    addLogEntry("anomaly", `⚠ 首次异常 @ ${nodeName}: ${reason}`);
+}
 
 function addLogEntry(type, text) {
     const time = new Date().toLocaleTimeString();
@@ -75,20 +151,59 @@ function updateState(fullState, delta) {
     pre.innerText = JSON.stringify(fullState, null, 2);
     stateViewer.appendChild(pre);
 
-    if (Object.keys(delta).length > 0) {
-        const deltaTitle = document.createElement("h3");
-        deltaTitle.innerText = "Last Change (Delta):";
-        deltaTitle.style.margin = "15px 0 10px 0";
-        deltaTitle.style.fontSize = "0.9rem";
-        deltaTitle.style.color = "#f59e0b";
-        stateViewer.appendChild(deltaTitle);
+    renderDelta(delta);
+}
 
-        const deltaPre = document.createElement("pre");
-        deltaPre.className = "state-block";
-        deltaPre.style.borderColor = "#f59e0b";
-        deltaPre.style.color = "#f59e0b";
-        deltaPre.innerText = JSON.stringify(delta, null, 2);
-        stateViewer.appendChild(deltaPre);
+// Render the backend-computed delta with color-coded keys:
+// added = green, changed = yellow, removed = red.
+function renderDelta(delta) {
+    if (!delta) return;
+    const added = delta.added || {};
+    const changed = delta.changed || {};
+    const removed = delta.removed || {};
+    const total = Object.keys(added).length + Object.keys(changed).length + Object.keys(removed).length;
+    if (total === 0) return;
+
+    const title = document.createElement("h3");
+    title.innerText = "Changes this step:";
+    title.style.margin = "15px 0 8px 0";
+    title.style.fontSize = "0.9rem";
+    title.style.color = "#94a3b8";
+    stateViewer.appendChild(title);
+
+    const list = document.createElement("div");
+    list.className = "delta-list";
+
+    const fmt = (v) => {
+        const s = JSON.stringify(v);
+        return s && s.length > 120 ? s.slice(0, 117) + "…" : s;
+    };
+
+    Object.entries(added).forEach(([k, v]) => {
+        addDeltaRow(list, "delta-added", `+ ${k}: ${fmt(v)}`);
+    });
+    Object.entries(changed).forEach(([k, ov]) => {
+        addDeltaRow(list, "delta-changed", `~ ${k}: ${fmt(ov.old)} → ${fmt(ov.new)}`);
+    });
+    Object.entries(removed).forEach(([k, v]) => {
+        addDeltaRow(list, "delta-removed", `- ${k}: ${fmt(v)}`);
+    });
+
+    stateViewer.appendChild(list);
+}
+
+function addDeltaRow(list, cls, text) {
+    const row = document.createElement("div");
+    row.className = `delta-row ${cls}`;
+    row.innerText = text;
+    list.appendChild(row);
+}
+
+function setErrorNode(nodeId) {
+    const node = document.getElementById(`node-${nodeId}`);
+    if (node) {
+        node.classList.remove("active", "completed");
+        node.classList.add("error");
     }
 }
 
