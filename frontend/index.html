@@ -286,6 +286,13 @@
         .log-entry.error { color: #fca5a5; }
         .log-entry.anomaly .dot { background: var(--warn); }
         .log-entry.anomaly { color: #fcd34d; font-weight: 600; }
+        /* Highlight the current step while scrubbing the replay timeline */
+        .log-entry.current {
+            background: var(--accent-soft);
+            border-radius: 6px;
+            margin: 0 -8px; padding-left: 8px; padding-right: 8px;
+        }
+        .log-entry.current .msg { color: var(--text-primary); font-weight: 600; }
 
         /* ---------- Timeline (replay) ---------- */
         .timeline-bar {
@@ -300,16 +307,29 @@
         }
         .timeline-bar.visible { display: flex; }
         .timeline-bar input[type="range"] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+
+        /* Prev/Next grouped as one segmented stepper (debugger-style) */
+        .tl-stepper { display: flex; flex: 0 0 auto; }
         .tl-btn {
             display: flex; align-items: center; justify-content: center;
             background: var(--bg-surface); color: var(--text-secondary);
-            border: 1px solid var(--border); border-radius: 7px;
-            width: 30px; height: 28px; cursor: pointer; padding: 0;
+            border: 1px solid var(--border); border-radius: 0;
+            width: 32px; height: 28px; cursor: pointer; padding: 0;
+            transition: background 0.15s ease, color 0.15s ease;
         }
-        .tl-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+        .tl-stepper .tl-btn:first-child {
+            border-top-left-radius: 7px; border-bottom-left-radius: 7px;
+        }
+        .tl-stepper .tl-btn:last-child {
+            border-top-right-radius: 7px; border-bottom-right-radius: 7px;
+            border-left: none;
+        }
+        .tl-btn:hover { background: var(--bg-surface-2); color: var(--text-primary); }
+        .tl-btn:active { background: var(--accent-soft); color: var(--accent); }
         .tl-label {
             font-size: 0.73rem; color: var(--text-secondary);
             font-family: var(--mono); white-space: nowrap;
+            min-width: 116px;
         }
 
         /* ---------- Graph nodes & edges ---------- */
@@ -410,14 +430,16 @@
             </svg>
 
             <div class="timeline-bar" id="timeline-bar">
-                <button class="tl-btn" id="tl-prev" title="Previous step (Left arrow)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                </button>
-                <input type="range" id="timeline" min="0" max="0" value="0" step="1" />
-                <button class="tl-btn" id="tl-next" title="Next step (Right arrow)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                </button>
+                <div class="tl-stepper" title="Step through the run (← / →)">
+                    <button class="tl-btn" id="tl-prev" title="Previous step (Left arrow)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <button class="tl-btn" id="tl-next" title="Next step (Right arrow)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                </div>
                 <span class="tl-label" id="tl-label">step 0 / 0</span>
+                <input type="range" id="timeline" min="0" max="0" value="0" step="1" />
             </div>
         </div>
 

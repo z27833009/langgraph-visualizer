@@ -75,8 +75,6 @@ export async function enterReplay(runId) {
     tl.max = Math.max(0, S.replayTimeline.length - 1);
     tl.value = tl.max;
     $("timeline-bar").classList.add("visible");
-    clearLog();
-    addLogEntry("init", `Replaying ${runId.slice(0, 8)} (${S.replayTimeline.length} steps)`);
     renderReplayStep(S.replayTimeline.length - 1);
 }
 
@@ -108,4 +106,18 @@ function renderReplayStep(idx) {
         updateState(cur.full_state, cur.state_delta);
     }
     $("tl-label").textContent = `step ${idx + 1} / ${tlen} · ${cur.node_name}`;
+
+    // Rebuild the Execution Log up to the current step so it tracks scrubbing,
+    // highlighting the current step (debugger-style).
+    clearLog();
+    for (let j = 0; j <= idx; j++) {
+        const ev = S.replayTimeline[j];
+        const current = j === idx;
+        if (ev.event_type === "node_error") {
+            addLogEntry("error", `${ev.node_name}: ${ev.error?.message || "error"}`, { ts: ev.ts, current });
+        } else {
+            const d = ev.duration_ms != null ? ` (${Math.round(ev.duration_ms)}ms)` : "";
+            addLogEntry("end", `${ev.node_name}${d}`, { ts: ev.ts, current });
+        }
+    }
 }

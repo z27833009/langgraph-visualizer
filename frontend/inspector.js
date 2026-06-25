@@ -3,15 +3,18 @@
 import { S, $ } from "./state.js";
 
 // --- execution log --------------------------------------------------------
-export function addLogEntry(type, text) {
+// opts: { ts?: epoch seconds, current?: bool }. `current` highlights the row
+// and scrolls it into view (used when scrubbing the replay timeline).
+export function addLogEntry(type, text, opts = {}) {
     const e = document.createElement("div");
-    e.className = `log-entry ${type}`;
-    const ts = new Date().toLocaleTimeString();
-    e.innerHTML = `<span class="dot"></span><span class="ts">${ts}</span><span class="msg"></span>`;
+    e.className = `log-entry ${type}` + (opts.current ? " current" : "");
+    const when = opts.ts ? new Date(opts.ts * 1000) : new Date();
+    e.innerHTML = `<span class="dot"></span><span class="ts">${when.toLocaleTimeString()}</span><span class="msg"></span>`;
     e.querySelector(".msg").textContent = text;   // textContent => no injection
     const lv = $("log-viewer");
     lv.appendChild(e);
-    lv.scrollTop = lv.scrollHeight;
+    if (opts.current) e.scrollIntoView({ block: "nearest" });
+    else lv.scrollTop = lv.scrollHeight;
 }
 
 export function clearLog() { $("log-viewer").innerHTML = ""; }

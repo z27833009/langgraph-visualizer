@@ -6,7 +6,7 @@ import {
 } from "./graph.js";
 import {
     updateState, showError, hideError, detectAnomalies, flagAnomaly,
-    addLogEntry, initErrorRegion,
+    addLogEntry, clearLog, initErrorRegion,
 } from "./inspector.js";
 import { initReplay, refreshRunList, hideTimeline } from "./replay.js";
 import { initPanels } from "./panels.js";
@@ -26,6 +26,7 @@ function enterLiveMode() {
     hideTimeline();
     clearNodeStates();
     resetRunState();
+    clearLog();
     addLogEntry("init", "Live mode — waiting for new runs…");
 }
 
@@ -40,6 +41,7 @@ function dispatch(data) {
             const s = data.structure || data.state_delta || {};
             initGraph(s.nodes || [], s.links || []);
             resetRunState();
+            clearLog();
             addLogEntry("init", "Graph initialized.");
             break;
         }
