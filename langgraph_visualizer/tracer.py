@@ -317,6 +317,33 @@ class WatchedGraph:
                 }
             )
 
+    # -- shared streaming helpers (used by both stream() and ainvoke()) ----
+    def _begin_run(self, config):
+        run_id = str(uuid.uuid4())
+        handler = VisualizerCallbackHandler(self._client, run_id, self._cost_table)
+        return run_id, handler, self._merge_callbacks(config, handler)
+
+    def _on_updates(self, st, data):
+        if isinstance(data, dict):
+            st["pending"] = [n for n in data if not str(n).startswith("__")]
+
+    def _on_values(self, run_id, handler, st, data):
+        if not st["init_sent"]:
+            # First values snapshot is the initial state (pre-execution).
+            self._emit_graph_init(run_id, data)
+            st["init_sent"] = True
+        else:
+            self._emit_node_ends(handler, run_id, st["pending"], data)
+        st["pending"] = []
+
+    def _finalize_run(self, run_id):
+        # Signal run completion (backend keeps 'error' if a node failed), then
+        # flush so node_error + run_end reach the backend before exit.
+        self._client.post_event(
+            {"event_type": "run_end", "run_id": run_id, "step": 0, "ts": time.time()}
+        )
+        self._client.flush()
+
     def invoke(self, inputs, config=None, **kwargs):
         final_state: Any = None
         for state in self.stream(inputs, config=config, stream_mode="values", **kwargs):
@@ -324,80 +351,39 @@ class WatchedGraph:
         return final_state
 
     def stream(self, inputs, config=None, stream_mode=None, **kwargs):
-        run_id = str(uuid.uuid4())
-        handler = VisualizerCallbackHandler(self._client, run_id, self._cost_table)
-        config = self._merge_callbacks(config, handler)
+        run_id, handler, config = self._begin_run(config)
         user_mode = stream_mode or "values"
-        pending_nodes: list[str] = []
-        init_sent = False
+        st = {"pending": [], "init_sent": False}
         try:
             for mode, data in self._graph.stream(
                 inputs, stream_mode=["updates", "values"], config=config, **kwargs
             ):
                 if mode == "updates":
-                    if isinstance(data, dict):
-                        pending_nodes = [
-                            n for n in data.keys() if not str(n).startswith("__")
-                        ]
+                    self._on_updates(st, data)
                     if user_mode == "updates":
                         yield data
                 elif mode == "values":
-                    if not init_sent:
-                        # First values snapshot is the initial state (pre-execution).
-                        self._emit_graph_init(run_id, data)
-                        init_sent = True
-                    else:
-                        self._emit_node_ends(handler, run_id, pending_nodes, data)
-                    pending_nodes = []
+                    self._on_values(run_id, handler, st, data)
                     if user_mode == "values":
                         yield data
         finally:
-            # Signal run completion (backend keeps 'error' if a node failed),
-            # then flush so node_error + run_end reach the backend before exit.
-            self._client.post_event(
-                {
-                    "event_type": "run_end",
-                    "run_id": run_id,
-                    "step": 0,
-                    "ts": time.time(),
-                }
-            )
-            self._client.flush()
+            self._finalize_run(run_id)
 
     async def ainvoke(self, inputs, config=None, **kwargs):
-        run_id = str(uuid.uuid4())
-        handler = VisualizerCallbackHandler(self._client, run_id, self._cost_table)
-        config = self._merge_callbacks(config, handler)
+        run_id, handler, config = self._begin_run(config)
         final_state: Any = None
-        pending_nodes: list[str] = []
-        init_sent = False
+        st = {"pending": [], "init_sent": False}
         try:
             async for mode, data in self._graph.astream(
                 inputs, stream_mode=["updates", "values"], config=config, **kwargs
             ):
                 if mode == "updates":
-                    if isinstance(data, dict):
-                        pending_nodes = [
-                            n for n in data.keys() if not str(n).startswith("__")
-                        ]
+                    self._on_updates(st, data)
                 elif mode == "values":
                     final_state = data
-                    if not init_sent:
-                        self._emit_graph_init(run_id, data)
-                        init_sent = True
-                    else:
-                        self._emit_node_ends(handler, run_id, pending_nodes, data)
-                    pending_nodes = []
+                    self._on_values(run_id, handler, st, data)
         finally:
-            self._client.post_event(
-                {
-                    "event_type": "run_end",
-                    "run_id": run_id,
-                    "step": 0,
-                    "ts": time.time(),
-                }
-            )
-            self._client.flush()
+            self._finalize_run(run_id)
         return final_state
 
 

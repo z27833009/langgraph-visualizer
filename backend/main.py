@@ -77,6 +77,9 @@ def compute_delta(event: GraphEvent) -> None:
         prev = _prev_state.get(event.run_id, {})
         event.state_delta = diff_state(prev, event.full_state or {})
         _prev_state[event.run_id] = event.full_state or {}
+    elif event.event_type == "run_end":
+        # Run finished; drop its baseline so the dict doesn't grow unbounded.
+        _prev_state.pop(event.run_id, None)
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

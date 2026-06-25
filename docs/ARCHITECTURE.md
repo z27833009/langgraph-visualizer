@@ -53,8 +53,9 @@ langgraph-visualizer/
 │   ├── ARCHITECTURE.md        # 本文件:稳定契约 (协议/数据流/目录)
 │   └── IMPLEMENTATION_PLAN.md # 分阶段路线图与任务 (随进度更新)
 ├── backend/
-│   ├── main.py                # FastAPI:/event 接收、/ws 广播、托管前端
-│   └── requirements.txt
+│   ├── main.py                # FastAPI:/event 接收、/ws 广播、/runs* 回放、托管前端
+│   ├── diff.py                # 递归 state diff (单一事实源)
+│   └── storage.py             # SQLite 持久化 (runs / events 两表)
 ├── frontend/
 │   ├── index.html
 │   └── main.js                # 原生 JS + SVG 可视化

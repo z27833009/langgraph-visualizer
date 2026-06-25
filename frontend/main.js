@@ -26,8 +26,7 @@ if (errorTab) {
     });
 }
 
-// Per-run history of each state key's value, for first-anomaly detection.
-let keyHistory = {};
+// Track which anomalies have already been flagged, so each fires only once.
 let flaggedAnomalies = new Set();
 
 // --- Mode + metrics state -------------------------------------------------
@@ -98,7 +97,6 @@ socket.onmessage = (event) => {
 };
 
 function resetRunState() {
-    keyHistory = {};
     flaggedAnomalies = new Set();
     nodeDurations = {};
     nodeTokens = {};
