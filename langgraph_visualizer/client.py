@@ -68,7 +68,12 @@ class EventClient:
             self._down = True
 
     def flush(self, timeout: float = 5.0) -> None:
-        """Best-effort wait until queued events are delivered."""
+        """Best-effort wait until queued events are *delivered*.
+
+        Waits on ``unfinished_tasks`` (decremented only after ``task_done`` runs,
+        i.e. after the POST completes) rather than ``empty()`` — otherwise an
+        in-flight request would be dropped when the process exits.
+        """
         deadline = time.monotonic() + timeout
-        while not self._q.empty() and time.monotonic() < deadline:
+        while self._q.unfinished_tasks > 0 and time.monotonic() < deadline:
             time.sleep(0.02)

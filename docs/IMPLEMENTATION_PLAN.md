@@ -164,13 +164,19 @@ graph.invoke(inputs)               # 正常调用，事件自动流到后端
 - 选两个 run，并排 diff：走的路径差异、同一节点的 state/耗时/成本差异。
 
 ### Phase 2 验收（每条都要可复现 + 有客观判据）
-- [ ] **持久化**:跑完一次 run 后,`visualizer.db` 中 `runs` 多一行、`events` 有对应该 run 的全部步;`visualizer.db` 已在 `.gitignore` 中。
-- [ ] **回放**:刷新 / 重开浏览器后,从 run 选择器选回历史 run,能完整复现(结构 + 每步状态),不依赖 WebSocket 实时流。
-- [ ] **时间旅行**:拖时间轴或按左右方向键,图与 state 面板回到对应 step 的快照;首尾边界不报错。
-- [ ] **热力**:节点卡片显示 `duration_ms` 与 token,最慢/最贵节点颜色明显更深;顶部汇总条显示总耗时/总 token/总成本。
-- [ ] **REST 正确**:`GET /runs`、`GET /runs/{id}`、`GET /runs/{id}/events` 三个端点返回结构正确(events 按 step 升序)。
-- [ ] **本地/隐私**:全程断网(或抓包确认)无任何对外请求;DB 仅在本机。
-- [ ] **单测通过 + 不破坏前序**:`uv run pytest` 全绿;Phase 0 与 Phase 1 的实时模式与错误可视化重测仍正常。
+- [x] **持久化**:跑完一次 run 后,`visualizer.db` 中 `runs` 多一行、`events` 有对应该 run 的全部步;`visualizer.db` 已在 `.gitignore` 中。
+- [x] **回放**:刷新 / 重开浏览器后,从 run 选择器选回历史 run,能完整复现(结构 + 每步状态),不依赖 WebSocket 实时流。
+- [x] **时间旅行**:拖时间轴或按左右方向键,图与 state 面板回到对应 step 的快照;首尾边界不报错。
+- [x] **热力**:节点卡片显示 `duration_ms` 与 token,最慢/最贵节点颜色明显更深;顶部汇总条显示总耗时/总 token/总成本。
+- [x] **REST 正确**:`GET /runs`、`GET /runs/{id}`、`GET /runs/{id}/events` 三个端点返回结构正确(events 按 step 升序)。
+- [x] **本地/隐私**:全程断网(或抓包确认)无任何对外请求;DB 仅在本机。
+- [x] **单测通过 + 不破坏前序**:`uv run pytest` 全绿;Phase 0 与 Phase 1 的实时模式与错误可视化重测仍正常。
+
+> **Phase 2 实现备注**
+> - 新增控制事件 `run_end`(向后兼容:前端遇到未知类型直接忽略),让后端把 run 状态从 `running` 翻成 `completed`(若已 `error` 则保持)。
+> - `client.flush()` 改为等待 `queue.unfinished_tasks==0`(而非 `empty()`),否则末尾事件(`run_end`/`node_error`)可能在 POST 在途时随进程退出被丢弃。
+> - 移除前端的 Google Fonts 外链,改用系统字体栈 —— 保证"全程无对外请求"。
+> - 2.5(两次 run 对比)属可选/加分项,本次未做,留待后续。
 
 ---
 

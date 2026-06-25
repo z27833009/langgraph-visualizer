@@ -4,10 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LangGraph Local Visualizer</title>
-    <!-- Load Google Font: Inter -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Local-first: no external fonts/CDNs. Use the system font stack so the
+         page makes zero outbound requests (privacy is a core principle). -->
     <style>
         :root {
             --bg-dark: #090d16;
@@ -72,6 +70,92 @@
             color: var(--text-secondary);
             border: 1px solid var(--border-color);
             transition: all 0.3s ease;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .summary-bar {
+            display: flex;
+            gap: 14px;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+        }
+
+        .summary-item b {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .run-select {
+            background-color: #1e293b;
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 0.75rem;
+            font-family: inherit;
+            max-width: 260px;
+        }
+
+        /* Timeline (replay / time travel) */
+        .timeline-bar {
+            position: absolute;
+            left: 24px;
+            right: 24px;
+            bottom: 18px;
+            display: none;
+            align-items: center;
+            gap: 12px;
+            background-color: rgba(15, 23, 42, 0.92);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 10px 16px;
+            box-shadow: 0 6px 20px -6px rgba(0, 0, 0, 0.6);
+        }
+
+        .timeline-bar.visible {
+            display: flex;
+        }
+
+        .timeline-bar input[type="range"] {
+            flex: 1;
+            accent-color: var(--accent-blue);
+            cursor: pointer;
+        }
+
+        .tl-btn {
+            background-color: #1e293b;
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            width: 30px;
+            height: 28px;
+            cursor: pointer;
+            font-size: 0.7rem;
+        }
+
+        .tl-btn:hover {
+            border-color: var(--accent-blue);
+        }
+
+        .tl-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+        /* Node metric overlay (duration / tokens) */
+        .node text.node-metrics {
+            fill: #94a3b8;
+            font-size: 8.5px;
+            font-weight: 500;
+            text-anchor: middle;
+            pointer-events: none;
         }
 
         .main-container {
@@ -338,7 +422,17 @@
 <body>
     <header>
         <h1>LangGraph Local Visualizer</h1>
-        <span class="status-badge" id="ws-status">Connecting...</span>
+        <div class="header-right">
+            <div class="summary-bar" id="summary-bar">
+                <span class="summary-item">⏱ <b id="sum-duration">0</b> ms</span>
+                <span class="summary-item">🔢 <b id="sum-tokens">0</b> tok</span>
+                <span class="summary-item">💲 <b id="sum-cost">0.0000</b></span>
+            </div>
+            <select class="run-select" id="run-select" title="Select a run to replay">
+                <option value="__live__">● Live</option>
+            </select>
+            <span class="status-badge" id="ws-status">Connecting...</span>
+        </div>
     </header>
 
     <div class="main-container">
@@ -349,6 +443,12 @@
                 <g id="nodes-group"></g>
             </svg>
 
+            <div class="timeline-bar" id="timeline-bar">
+                <button class="tl-btn" id="tl-prev" title="Previous step (←)">◀</button>
+                <input type="range" id="timeline" min="0" max="0" value="0" step="1" />
+                <button class="tl-btn" id="tl-next" title="Next step (→)">▶</button>
+                <span class="tl-label" id="tl-label">step 0 / 0</span>
+            </div>
         </div>
 
         <!-- Inspector Sidebar -->

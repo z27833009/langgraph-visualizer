@@ -352,8 +352,16 @@ class WatchedGraph:
                     if user_mode == "values":
                         yield data
         finally:
-            # Always flush so a node_error (emitted by the callback right before
-            # the exception propagates) reaches the backend before we exit.
+            # Signal run completion (backend keeps 'error' if a node failed),
+            # then flush so node_error + run_end reach the backend before exit.
+            self._client.post_event(
+                {
+                    "event_type": "run_end",
+                    "run_id": run_id,
+                    "step": 0,
+                    "ts": time.time(),
+                }
+            )
             self._client.flush()
 
     async def ainvoke(self, inputs, config=None, **kwargs):
@@ -381,6 +389,14 @@ class WatchedGraph:
                         self._emit_node_ends(handler, run_id, pending_nodes, data)
                     pending_nodes = []
         finally:
+            self._client.post_event(
+                {
+                    "event_type": "run_end",
+                    "run_id": run_id,
+                    "step": 0,
+                    "ts": time.time(),
+                }
+            )
             self._client.flush()
         return final_state
 

@@ -9,6 +9,16 @@ const errorTraceback = document.getElementById("error-traceback");
 const errorTab = document.getElementById("error-tab");
 const errorToggle = document.getElementById("error-toggle");
 
+const runSelect = document.getElementById("run-select");
+const timelineBar = document.getElementById("timeline-bar");
+const timeline = document.getElementById("timeline");
+const tlLabel = document.getElementById("tl-label");
+const tlPrev = document.getElementById("tl-prev");
+const tlNext = document.getElementById("tl-next");
+const sumDuration = document.getElementById("sum-duration");
+const sumTokens = document.getElementById("sum-tokens");
+const sumCost = document.getElementById("sum-cost");
+
 if (errorTab) {
     errorTab.addEventListener("click", () => {
         errorTraceback.classList.toggle("collapsed");
@@ -19,6 +29,13 @@ if (errorTab) {
 // Per-run history of each state key's value, for first-anomaly detection.
 let keyHistory = {};
 let flaggedAnomalies = new Set();
+
+// --- Mode + metrics state -------------------------------------------------
+let mode = "live";                 // "live" | "replay"
+let nodeDurations = {};            // node_name -> latest duration_ms (for heatmap)
+let nodeTokens = {};               // node_name -> latest token total
+let totals = { duration: 0, tokens: 0, cost: 0 };
+let replayTimeline = [];           // node_end / node_error events, ordered by step
 
 const socket = new WebSocket(`ws://${window.location.host}/ws`);
 
@@ -47,14 +64,20 @@ let graphData = {
 socket.onmessage = (event) => {
     const data = JSON.parse(event.data);
 
+    // run_end is a control event — refresh the run list so the new run
+    // appears in the selector. Ignore other live events while replaying.
+    if (data.event_type === "run_end") {
+        refreshRunList();
+        return;
+    }
+    if (mode !== "live") return;
+
     if (data.event_type === "graph_init") {
         // New protocol: structure = {nodes:[{id,label}], links:[{source,target}]}.
         // Backward-compat: old events carried nodes/links under state_delta.
         const structure = data.structure || data.state_delta || {};
         initGraph(structure.nodes || [], structure.links || []);
-        keyHistory = {};
-        flaggedAnomalies = new Set();
-        hideError();
+        resetRunState();
         addLogEntry("init", "Graph initialized with structure.");
     } else if (data.event_type === "node_start") {
         setActiveNode(data.node_name);
@@ -63,6 +86,7 @@ socket.onmessage = (event) => {
         setCompletedNode(data.node_name);
         updateState(data.full_state, data.state_delta);
         detectAnomalies(data.node_name, data.full_state, data.state_delta);
+        recordMetrics(data);
         const dur = data.duration_ms != null ? ` (${data.duration_ms.toFixed(0)}ms)` : "";
         addLogEntry("end", `✓ ${data.node_name}${dur}`);
     } else if (data.event_type === "node_error") {
@@ -72,6 +96,36 @@ socket.onmessage = (event) => {
         addLogEntry("error", `✗ ${data.node_name}: ${data.error?.message || "error"}`);
     }
 };
+
+function resetRunState() {
+    keyHistory = {};
+    flaggedAnomalies = new Set();
+    nodeDurations = {};
+    nodeTokens = {};
+    totals = { duration: 0, tokens: 0, cost: 0 };
+    updateSummary();
+    hideError();
+}
+
+// Accumulate node metrics + run totals, then refresh card overlay + heatmap.
+function recordMetrics(ev) {
+    if (ev.duration_ms != null) {
+        nodeDurations[ev.node_name] = ev.duration_ms;
+        totals.duration += ev.duration_ms;
+    }
+    const tok = (ev.tokens && ev.tokens.total) || 0;
+    if (tok) { nodeTokens[ev.node_name] = tok; totals.tokens += tok; }
+    if (ev.cost_usd) totals.cost += ev.cost_usd;
+    updateNodeCard(ev.node_name);
+    applyHeat();
+    updateSummary();
+}
+
+function updateSummary() {
+    sumDuration.innerText = Math.round(totals.duration).toLocaleString();
+    sumTokens.innerText = totals.tokens.toLocaleString();
+    sumCost.innerText = totals.cost.toFixed(4);
+}
 
 function showError(nodeName, error) {
     errorTraceback.innerText =
@@ -352,27 +406,63 @@ function initGraph(nodes, links) {
         // Node card background (rx/ry rounded corners)
         const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
         rect.setAttribute("x", -70);
-        rect.setAttribute("y", -25);
+        rect.setAttribute("y", -28);
         rect.setAttribute("width", 140);
-        rect.setAttribute("height", 50);
+        rect.setAttribute("height", 58);
         g.appendChild(rect);
 
         // Subtitle / Type label
         const typeText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        typeText.setAttribute("y", -8);
+        typeText.setAttribute("y", -13);
         typeText.setAttribute("class", "node-type");
         typeText.textContent = node.type;
         g.appendChild(typeText);
 
         // Main Node name
         const labelText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        labelText.setAttribute("y", 12);
+        labelText.setAttribute("y", 4);
         labelText.setAttribute("class", "node-label");
         labelText.textContent = node.label;
         g.appendChild(labelText);
 
+        // Metrics overlay (duration / tokens), filled in on node_end / replay
+        const metricsText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        metricsText.setAttribute("y", 20);
+        metricsText.setAttribute("class", "node-metrics");
+        metricsText.setAttribute("id", `metrics-${id}`);
+        g.appendChild(metricsText);
+
         nodesGroup.appendChild(g);
     });
+}
+
+// --- Node metric overlay + heatmap ---------------------------------------
+function updateNodeCard(nodeId) {
+    const el = document.getElementById(`metrics-${nodeId}`);
+    if (!el) return;
+    const parts = [];
+    if (nodeDurations[nodeId] != null) parts.push(`${Math.round(nodeDurations[nodeId])}ms`);
+    if (nodeTokens[nodeId]) parts.push(`${nodeTokens[nodeId]} tok`);
+    el.textContent = parts.join(" · ");
+}
+
+// Tint each node's fill by how slow it is relative to the slowest node.
+function applyHeat() {
+    const vals = Object.values(nodeDurations);
+    const max = vals.length ? Math.max(...vals) : 0;
+    Object.keys(nodeDurations).forEach(id => {
+        const rect = document.querySelector(`#node-${id} rect`);
+        if (!rect) return;
+        const t = max > 0 ? nodeDurations[id] / max : 0;
+        rect.style.fill = heatColor(t);
+    });
+}
+
+// Interpolate cool slate (#1e293b) -> hot red (#b91c1c) by t in [0,1].
+function heatColor(t) {
+    const c0 = [30, 41, 59], c1 = [185, 28, 28];
+    const mix = c0.map((v, i) => Math.round(v + (c1[i] - v) * t));
+    return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
 }
 
 function setActiveNode(nodeId) {
@@ -401,4 +491,150 @@ function setCompletedNode(nodeId) {
         node.classList.add("completed");
     }
 }
+
+function clearNodeStates() {
+    document.querySelectorAll(".node").forEach(n =>
+        n.classList.remove("active", "completed", "error"));
+    document.querySelectorAll(".edge").forEach(e => e.classList.remove("active"));
+}
+
+// =========================================================================
+// Replay / time travel
+// =========================================================================
+async function refreshRunList() {
+    let runs = [];
+    try {
+        runs = await (await fetch("/runs")).json();
+    } catch (e) {
+        return;
+    }
+    const current = runSelect.value;
+    runSelect.innerHTML = '<option value="__live__">● Live</option>';
+    runs.forEach(r => {
+        const opt = document.createElement("option");
+        opt.value = r.run_id;
+        const when = r.started_at ? new Date(r.started_at * 1000).toLocaleTimeString() : "";
+        const icon = r.status === "error" ? "✗" : (r.status === "completed" ? "✓" : "●");
+        opt.innerText = `${icon} ${when} · ${r.run_id.slice(0, 8)}`;
+        runSelect.appendChild(opt);
+    });
+    // Preserve selection if still present.
+    if ([...runSelect.options].some(o => o.value === current)) runSelect.value = current;
+}
+
+runSelect.addEventListener("change", () => {
+    const val = runSelect.value;
+    if (val === "__live__") {
+        enterLiveMode();
+    } else {
+        enterReplay(val);
+    }
+});
+
+function enterLiveMode() {
+    mode = "live";
+    timelineBar.classList.remove("visible");
+    clearNodeStates();
+    resetRunState();
+    addLogEntry("init", "Live mode — waiting for new runs…");
+}
+
+async function enterReplay(runId) {
+    let run, events;
+    try {
+        run = await (await fetch(`/runs/${runId}`)).json();
+        events = await (await fetch(`/runs/${runId}/events`)).json();
+    } catch (e) {
+        addLogEntry("error", `Failed to load run ${runId}`);
+        return;
+    }
+    mode = "replay";
+    hideError();
+
+    // Rebuild the graph from the stored structure.
+    const structure = run.structure || {};
+    initGraph(structure.nodes || [], structure.links || []);
+
+    // Build heat / metric maps from the full run, plus run-total summary.
+    nodeDurations = {};
+    nodeTokens = {};
+    events.forEach(e => {
+        if (e.event_type === "node_end") {
+            if (e.duration_ms != null) nodeDurations[e.node_name] = e.duration_ms;
+            const tok = (e.tokens && e.tokens.total) || 0;
+            if (tok) nodeTokens[e.node_name] = tok;
+        }
+    });
+    totals = {
+        duration: events.reduce((s, e) => s + (e.duration_ms || 0), 0),
+        tokens: run.total_tokens || 0,
+        cost: run.total_cost || 0,
+    };
+    updateSummary();
+    applyHeat();
+
+    // Timeline = the steps that produced a state snapshot or an error.
+    replayTimeline = events.filter(e =>
+        e.event_type === "node_end" || e.event_type === "node_error");
+    timeline.min = 0;
+    timeline.max = Math.max(0, replayTimeline.length - 1);
+    timeline.value = timeline.max;          // start at the end (final state)
+    timelineBar.classList.add("visible");
+    logViewer.innerHTML = "";
+    addLogEntry("init", `Replaying run ${runId.slice(0, 8)} (${replayTimeline.length} steps)`);
+    renderReplayStep(replayTimeline.length - 1);
+}
+
+function renderReplayStep(idx) {
+    if (!replayTimeline.length) return;
+    idx = Math.max(0, Math.min(idx, replayTimeline.length - 1));
+    timeline.value = idx;
+    clearNodeStates();
+    hideError();
+
+    // Cumulative node states up to and including idx.
+    for (let j = 0; j <= idx; j++) {
+        const ev = replayTimeline[j];
+        const node = document.getElementById(`node-${ev.node_name}`);
+        if (!node) continue;
+        if (ev.event_type === "node_error") {
+            node.classList.remove("completed");
+            node.classList.add("error");
+        } else {
+            node.classList.add("completed");
+        }
+        updateNodeCard(ev.node_name);
+    }
+
+    const cur = replayTimeline[idx];
+    if (cur.event_type === "node_error") {
+        setErrorNode(cur.node_name);
+        showError(cur.node_name, cur.error || {});
+    } else {
+        // Mark the current node active to indicate "you are here".
+        const node = document.getElementById(`node-${cur.node_name}`);
+        if (node) node.classList.add("active");
+        updateState(cur.full_state, cur.state_delta);
+    }
+
+    tlLabel.innerText = `step ${idx + 1} / ${replayTimeline.length} · ${cur.node_name}`;
+}
+
+timeline.addEventListener("input", () => renderReplayStep(parseInt(timeline.value, 10)));
+tlPrev.addEventListener("click", () => renderReplayStep(parseInt(timeline.value, 10) - 1));
+tlNext.addEventListener("click", () => renderReplayStep(parseInt(timeline.value, 10) + 1));
+
+document.addEventListener("keydown", (e) => {
+    if (mode !== "replay") return;
+    if (e.key === "ArrowLeft") {
+        renderReplayStep(parseInt(timeline.value, 10) - 1);
+        e.preventDefault();
+    } else if (e.key === "ArrowRight") {
+        renderReplayStep(parseInt(timeline.value, 10) + 1);
+        e.preventDefault();
+    }
+});
+
+// Populate the run list on load.
+refreshRunList();
 

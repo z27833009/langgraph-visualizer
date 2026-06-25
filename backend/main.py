@@ -1,14 +1,16 @@
 import logging
 from pathlib import Path
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 try:  # works both as `python backend/main.py` and as a package import
     from backend.diff import diff_state
+    from backend.storage import get_events, get_run, list_runs, persist_event
 except ImportError:
     from diff import diff_state
+    from storage import get_events, get_run, list_runs, persist_event
 
 
 logging.basicConfig(level=logging.INFO)
@@ -92,9 +94,31 @@ async def post_event(event: GraphEvent):
     logger.info(f"Received event: {event.event_type} for node '{event.node_name}'")
     # Backend computes the state delta (single source of truth).
     compute_delta(event)
+    # Persist locally for replay / time travel.
+    persist_event(event)
     # Broadcast to all connected frontends
     await manager.broadcast(event.model_dump_json())
     return {"status": "ok"}
+
+
+# --- Replay REST API -------------------------------------------------------
+@app.get("/runs")
+async def get_runs():
+    return list_runs()
+
+
+@app.get("/runs/{run_id}")
+async def get_run_detail(run_id: str):
+    run = get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    return run
+
+
+@app.get("/runs/{run_id}/events")
+async def get_run_events(run_id: str):
+    return get_events(run_id)
+
 
 # Serve frontend static files
 BASE_DIR = Path(__file__).resolve().parent
