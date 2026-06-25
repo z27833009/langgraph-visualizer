@@ -31,17 +31,23 @@ let graphData = {
 
 socket.onmessage = (event) => {
     const data = JSON.parse(event.data);
-    
+
     if (data.event_type === "graph_init") {
-        initGraph(data.state_delta.nodes, data.state_delta.links);
-        addLogEntry("graph_init", "Graph initialized with structure.");
+        // New protocol: structure = {nodes:[{id,label}], links:[{source,target}]}.
+        // Backward-compat: old events carried nodes/links under state_delta.
+        const structure = data.structure || data.state_delta || {};
+        initGraph(structure.nodes || [], structure.links || []);
+        addLogEntry("init", "Graph initialized with structure.");
     } else if (data.event_type === "node_start") {
         setActiveNode(data.node_name);
-        addLogEntry("start", `Entering node: ${data.node_name}`);
+        addLogEntry("start", `→ ${data.node_name}`);
     } else if (data.event_type === "node_end") {
         setCompletedNode(data.node_name);
         updateState(data.full_state, data.state_delta);
-        addLogEntry("end", `Exited node: ${data.node_name}`);
+        const dur = data.duration_ms != null ? ` (${data.duration_ms.toFixed(0)}ms)` : "";
+        addLogEntry("end", `✓ ${data.node_name}${dur}`);
+    } else if (data.event_type === "node_error") {
+        addLogEntry("end", `✗ ${data.node_name}: ${data.error?.message || "error"}`);
     }
 };
 
@@ -86,13 +92,17 @@ function updateState(fullState, delta) {
     }
 }
 
-// Render nodes in a simple layered or circular layout
+// Render nodes in a simple layered or circular layout.
+// `nodes` is a list of {id, label}; `links` is a list of {source, target}.
 function initGraph(nodes, links) {
     nodesGroup.innerHTML = "";
     linksGroup.innerHTML = "";
-    
-    const nodeIds = Object.keys(nodes);
-    
+
+    // Build a {id: {label}} lookup from the structure list.
+    const nodeMeta = {};
+    nodes.forEach(n => { nodeMeta[n.id] = { label: n.label || n.id }; });
+    const nodeIds = Object.keys(nodeMeta);
+
     // Build adjacency list for BFS
     const adj = {};
     const depthMap = {};
@@ -171,7 +181,7 @@ function initGraph(nodes, links) {
                 id: id,
                 x: x,
                 y: y,
-                label: nodes[id].label || id,
+                label: (nodeMeta[id] && nodeMeta[id].label) || id,
                 type: type
             };
         });

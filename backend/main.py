@@ -22,10 +22,18 @@ app.add_middleware(
 )
 
 class GraphEvent(BaseModel):
-    event_type: str  # "node_start" | "node_end" | "graph_init"
-    node_name: str
-    state_delta: dict = {}
-    full_state: dict = {}
+    event_type: str  # "graph_init" | "node_start" | "node_end" | "node_error"
+    run_id: str = ""              # one full run (grouping / replay key)
+    step: int = 0                 # monotonic step index within the run
+    node_name: str = ""
+    ts: float = 0.0               # event timestamp (epoch seconds)
+    duration_ms: float | None = None
+    state_delta: dict = {}        # node_end: keys changed this step (backend-computed)
+    full_state: dict = {}         # node_end: complete state after this step
+    tokens: dict | None = None    # {"input","output","total"}
+    cost_usd: float | None = None
+    error: dict | None = None     # {"type","message","traceback"} (node_error)
+    structure: dict | None = None  # graph_init: {"nodes":[...], "links":[...]}
 
 # Active WebSocket connections
 class ConnectionManager:
