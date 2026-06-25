@@ -56,9 +56,14 @@ langgraph-visualizer/
 │   ├── main.py                # FastAPI:/event 接收、/ws 广播、/runs* 回放、托管前端
 │   ├── diff.py                # 递归 state diff (单一事实源)
 │   └── storage.py             # SQLite 持久化 (runs / events 两表)
-├── frontend/
-│   ├── index.html
-│   └── main.js                # 原生 JS + SVG 可视化
+├── frontend/                  # 原生 JS + SVG,ES6 模块,无构建
+│   ├── index.html             # 布局 + design tokens(暗色)+ 内联 SVG 图标
+│   ├── state.js               # 共享状态 + DOM helper
+│   ├── graph.js               # 布局/节点(卡片+start/end)/边/热力/汇总
+│   ├── inspector.js           # state JSON / 三色 delta / 错误 / 首次异常 / 日志
+│   ├── replay.js              # run 选择器 / 时间轴 / 时间旅行(纯 REST)
+│   ├── panels.js              # 三面板可拖拽分隔条 + 尺寸持久化
+│   └── main.js                # 入口:WebSocket + 事件分发 + 装配
 ├── langgraph_visualizer/      # [Phase 0 新增] client 包
 │   ├── __init__.py            # 暴露 watch()
 │   ├── tracer.py              # 结构提取 + VisualizerCallbackHandler
